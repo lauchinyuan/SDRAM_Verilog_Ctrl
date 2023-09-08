@@ -51,10 +51,12 @@ module sdram_init(
               PRE_CHARG_CMD = 4'b0010,
               AUTO_REF_CMD  = 4'b0001,
               MOD_REG_CMD   = 4'b0000;
+    
+    //潜伏期参数
+    parameter CAS           = 3'b011 ;
               
     //寄存器配置参数
-    //潜伏期为3周期, 突发传输方式为整页
-    parameter MOD_ADDR      = {3'b0,1'b0,2'b0,3'b011,1'b0,3'b111}  ; //配置模式寄存器的值
+    parameter MOD_ADDR      = {3'b0,1'b0,2'b0,CAS,1'b0,3'b111}  ; //配置模式寄存器的值
               
               
     //中间信号定义,用于状态机状态转换条件判断

@@ -92,7 +92,9 @@ module sdram_read(
     
     //burst_term
     always@(posedge clk or negedge rst_n) begin
-        case(state)
+        if(!rst_n) begin
+            burst_term <= 1'b0;
+        end else case(state)
             //burst_STOP信号可能出现在WAIT_CAS, BURST_READ状态下
             WAIT_CAS, BURST_READ: begin
                 if(cnt_clk == rd_burst_len - 10'd1) begin
