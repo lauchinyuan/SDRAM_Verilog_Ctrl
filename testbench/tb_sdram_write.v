@@ -7,7 +7,6 @@
 // Description: testbench for sdram_write module
 //////////////////////////////////////////////////////////////////////////////////
 
-
 module tb_sdram_write(
 
     );
@@ -38,7 +37,8 @@ module tb_sdram_write(
     
     //write模块输入
     reg        wr_en            ;   
-    reg [15:0] wr_data          ;  
+    reg [15:0] wr_data          ; 
+    reg [23:0] wr_addr          ;
     
     
     //write模块输出
@@ -83,16 +83,25 @@ module tb_sdram_write(
     
     
     
-    //wr_data, 写入数据产生器, 起到FIFO的作用
+    //wr_data, 写入数据产生器
     always@(posedge clk_100M or negedge locked_rst_n) begin
         if(!locked_rst_n) begin
-            wr_data <= 16'b0;
-        end else if(wr_end) begin
             wr_data <= 16'b0;
         end else if(wr_ack) begin
             wr_data <= wr_data + 16'd1;
         end else begin
             wr_data <= wr_data;
+        end
+    end
+    
+    //wr_addr
+    always@(posedge clk_100M or negedge locked_rst_n) begin
+        if(!locked_rst_n) begin
+            wr_addr <= 24'b0;
+        end else if(wr_ack) begin
+            wr_addr <= wr_addr + 24'd1;
+        end else begin
+            wr_addr <= wr_addr;
         end
     end
     
@@ -159,9 +168,9 @@ module tb_sdram_write(
         .clk             (clk_100M        ),
         .rst_n           (locked_rst_n    ),
         .wr_en           (wr_en           ),
-        .wr_addr         (24'h000_000     ),  //2bit Bank_addr + 13bit Row_addr + 9bit Column_addr
+        .wr_addr         (wr_addr         ),  //2bit Bank_addr + 13bit Row_addr + 9bit Column_addr
         .wr_data         (wr_data         ),
-        .wr_burst_len    (10'd2           ),  //使用full-page
+        .wr_burst_len    (10'd511         ),  //使用full-page
 
         .wr_cmd          (wr_cmd          ),
         .wr_bank_addr    (wr_bank_addr    ),

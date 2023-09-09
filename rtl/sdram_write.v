@@ -4,7 +4,7 @@
 // Email:lauchinyuan@yeah.net
 // Create Date: 2023/09/05 22:44:31
 // Module Name: sdram_write
-// Description: SDRAM写逻辑, full-page突发传输模式, 突发长度至少是2
+// Description: SDRAM写逻辑, full-page突发传输模式
 //////////////////////////////////////////////////////////////////////////////////
 
 
@@ -24,6 +24,9 @@ module sdram_write(
         output  wire        wr_ack          ,
         output  reg         wr_sdram_en     
     );
+    
+    //列单元数定义
+    parameter   MAX_COLUMN  =   10'd512     ;
     
     //状态机状态定义
     parameter   IDLE        =   9'b000_000_001,
@@ -46,6 +49,7 @@ module sdram_write(
     //时间周期定义
     parameter   TRCD            =   9'd2    ,
                 TRP             =   9'd2    ;
+    
                 
                 
     //输入地址解析
@@ -61,14 +65,23 @@ module sdram_write(
     
                 
     //中间信号
-    reg     [8:0]   state       ;
-    reg     [8:0]   next_state  ;
-    reg     [8:0]   cnt_clk     ; //定时计数器信号
-    reg             cnt_clk_res ; //定时计数器复位信号,高电平有效
-    wire            trcd_end    ; //Trcd时长等待完毕
-    wire            trp_end     ; //Trp时长等待完毕    
-    wire            burst_end   ; //突发传输完成flag
+    reg     [8:0]   state           ;
+    reg     [8:0]   next_state      ;
+    reg     [8:0]   cnt_clk         ; //定时计数器信号
+    reg             cnt_clk_res     ; //定时计数器复位信号,高电平有效
+    wire            trcd_end        ; //Trcd时长等待完毕
+    wire            trp_end         ; //Trp时长等待完毕    
+    wire            burst_end       ; //突发传输完成flag
+    
+    //处理突发传输溢出(突发连续写入的地址空间跨越不同行, 则需要暂停当前行写入, 并在新行重新进行发起写操作)
+    reg             wr_overflow     ; //当前写入的(column_addr + wr_burst_len) > MAX_COLUMN
+    reg     [9:0]   burst_len       ; //实际写操作的有效突发长度,没有溢出时是wr_burst_len, 溢出时更短
+    reg     [12:0]  column_addr_reg ; //寄存实际写入的列首地址
+    
+    
 
+    
+    
     //cnt_clk
     always@(posedge clk or negedge rst_n) begin
         if(!rst_n) begin
@@ -84,8 +97,8 @@ module sdram_write(
     assign trcd_end = (state == WAIT_TRCD && cnt_clk == TRCD)?1'b1:1'b0;
     assign trp_end  = (state == WAIT_TRP && cnt_clk == TRP)?1'b1:1'b0;
     
-    //突发传输完成flag
-    assign burst_end = (state == BURST_WRITE && cnt_clk == (wr_burst_len - 1))?1'b1:1'b0;
+    //突发传输完成flag, 可能在BURST_WRITE、WRITE两种状态下出现
+    assign burst_end = ((state == BURST_WRITE || state == WRITE) && cnt_clk == (burst_len - 1))?1'b1:1'b0;
     
     //cnt_clk_res
     always@(*) begin    
@@ -144,7 +157,11 @@ module sdram_write(
             end
             
             WRITE: begin
-                next_state = BURST_WRITE;
+                if(burst_end) begin
+                    next_state = BURST_TERM;  //突发长度为1,下一个状态直接终止突发传输
+                end else begin
+                    next_state = BURST_WRITE;               
+                end
             end
             
             BURST_WRITE: begin
@@ -181,6 +198,62 @@ module sdram_write(
             
         endcase
     end
+    
+    //处理突发传输溢出(突发连续写入的地址空间跨越不同行, 则需要暂停当前行写入, 并在新行重新进行发起写操作)
+    
+    //column_addr_reg
+    always@(posedge clk or negedge rst_n) begin
+        if(!rst_n) begin
+            column_addr_reg <= 13'b0;
+        end else if(state == WRITE) begin //寄存列首地址
+            column_addr_reg <= column_addr;
+        end else begin
+            column_addr_reg <= column_addr_reg;
+        end
+    end
+    
+    
+    //wr_overflow
+    always@(*) begin
+        case(state) 
+            WRITE: begin //WRITE状态下的地址就是列首地址
+                wr_overflow = (column_addr + wr_burst_len > MAX_COLUMN)?1'b1:1'b0;
+            end
+            
+            BURST_WRITE: begin //使用寄存的列首地址
+                wr_overflow = (column_addr_reg + wr_burst_len > MAX_COLUMN)?1'b1:1'b0;
+            end
+            
+            default: begin //其它状态不关心overflow与否
+                wr_overflow = 1'b0;
+            end
+        endcase
+    end
+    
+    //burst_len
+    always@(*) begin
+        case(state) 
+            WRITE: begin //WRITE状态下的地址就是列首地址
+                if(wr_overflow) begin
+                    burst_len = MAX_COLUMN - column_addr;
+                end else begin      //没有溢出时是wr_burst_len
+                    burst_len = wr_burst_len;
+                end
+            end
+            
+            BURST_WRITE: begin //使用寄存的列首地址
+                if(wr_overflow) begin
+                    burst_len = MAX_COLUMN - column_addr_reg;
+                end else begin     //没有溢出时是wr_burst_len
+                    burst_len = wr_burst_len;
+                end
+            end
+            
+            default: begin //其它状态使用输入的突发长度
+                burst_len = wr_burst_len;
+            end
+        endcase
+    end    
     
     
     
