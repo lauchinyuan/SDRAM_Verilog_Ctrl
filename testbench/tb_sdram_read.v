@@ -36,7 +36,8 @@ module tb_sdram_read(
     wire [15:0]  sdram_dq         ;
 
     //write模块输入
-    reg        wr_en              ;   
+    reg        wr_en              ;
+    reg [23:0] wr_addr            ;
     reg [15:0] wr_data            ;  
     
     
@@ -51,6 +52,7 @@ module tb_sdram_read(
 
     //sdram_read模块输入
     reg          rd_en            ;
+    reg [23:0]   rd_addr          ;
     
     //sdram_read模块输出
     wire         rd_ack           ;
@@ -95,16 +97,36 @@ module tb_sdram_read(
     
     
     
-    //wr_data, 写入数据产生器, 起到系统中FIFO的作用
+    //wr_data, 写入数据产生器
     always@(posedge clk_100M or negedge locked_rst_n) begin
         if(!locked_rst_n) begin
-            wr_data <= 16'b0;
-        end else if(wr_end) begin
             wr_data <= 16'b0;
         end else if(wr_ack) begin
             wr_data <= wr_data + 16'd1;
         end else begin
             wr_data <= wr_data;
+        end
+    end
+    
+    //写地址更新
+    always@(posedge clk_100M or negedge locked_rst_n) begin
+        if(!locked_rst_n) begin
+            wr_addr <= 24'b0;
+        end else if(wr_ack) begin
+            wr_addr <= wr_addr + 24'd1;
+        end else begin
+            wr_addr <= wr_addr;
+        end
+    end
+
+    //读地址更新
+    always@(posedge clk_100M or negedge locked_rst_n) begin
+        if(!locked_rst_n) begin
+            rd_addr <= 24'b0;
+        end else if(rd_ack) begin
+            rd_addr <= rd_addr + 24'd1;
+        end else begin
+            rd_addr <= rd_addr;
         end
     end
     
@@ -137,8 +159,8 @@ module tb_sdram_read(
     end
     
     //潜伏期重配置, CAS要保持一致
-    defparam sdram_init_inst.CAS = 3'b010;
-    defparam sdram_read_inst.CAS = 3'b010;
+    defparam sdram_init_inst.CAS = 3'b011;
+    defparam sdram_read_inst.CAS = 3'b011;
     
     //时钟生成IP核
       clk_gen clk_gen_inst
@@ -187,9 +209,9 @@ module tb_sdram_read(
         .clk             (clk_100M        ),
         .rst_n           (locked_rst_n    ),
         .wr_en           (wr_en           ),
-        .wr_addr         (24'h000_000     ),  //2bit Bank_addr + 13bit Row_addr + 9bit Column_addr
+        .wr_addr         (wr_addr         ),  //2bit Bank_addr + 13bit Row_addr + 9bit Column_addr
         .wr_data         (wr_data         ),
-        .wr_burst_len    (10'd2          ),  //使用full-page突发传输
+        .wr_burst_len    (10'd511         ),  //使用full-page突发传输
 
         .wr_cmd          (wr_cmd          ),
         .wr_bank_addr    (wr_bank_addr    ),
@@ -204,9 +226,9 @@ module tb_sdram_read(
     sdram_read sdram_read_inst(
         .clk             (clk_100M        ),
         .rst_n           (locked_rst_n    ),
-        .rd_addr         (24'h000_000     ), //与写模块的地址保持一致
+        .rd_addr         (rd_addr         ), 
         .rd_sdram_data   (sdram_dq        ),
-        .rd_burst_len    (10'd2          ),
+        .rd_burst_len    (10'd511         ),
         .rd_en           (rd_en           ),
                           
         .rd_ack          (rd_ack          ),

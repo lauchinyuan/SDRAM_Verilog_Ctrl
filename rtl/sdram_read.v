@@ -23,6 +23,8 @@ module sdram_read(
         output  wire            rd_end          ,
         output  wire    [15:0]  rd_data         
     );
+    //列单元数定义
+    parameter   MAX_COLUMN  =   10'd512     ;    
     
     //状态机状态定义
     parameter   IDLE        =   9'b000_000_001,
@@ -68,6 +70,11 @@ module sdram_read(
     reg             burst_term  ; //BURST_TERMINAL标志,高电平时表示需要发送BURST_TERMINAL命令,终止突发传输
     reg     [15:0]  rd_data_reg ; //输入数据寄存器,打拍实现SDRAM读取数据的同步
     
+    //处理突发传输溢出(突发连续读取的地址空间跨越不同行, 则需要暂停当前行读取, 并在新行重新进行发起读操作)
+    reg             rd_overflow     ; //当前读取的(column_addr + rd_burst_len) > MAX_COLUMN
+    reg     [9:0]   burst_len       ; //实际读操作的有效突发长度,没有溢出时是rd_burst_len, 溢出时更短
+    reg     [12:0]  column_addr_reg ; //寄存实际读操作的列首地址
+    
     //cnt_clk
     always@(posedge clk or negedge rst_n) begin
         if(!rst_n) begin
@@ -84,27 +91,25 @@ module sdram_read(
     assign trp_end  = (state == WAIT_TRP && cnt_clk == TRP)?1'b1:1'b0;
 
     //突发传输完成flag
-    assign burst_end = (state == BURST_READ && cnt_clk == (rd_burst_len + CAS - 1))?1'b1:1'b0;
+    assign burst_end = (state == BURST_READ && cnt_clk == (burst_len + CAS - 1))?1'b1:1'b0;
     
     //cas_end
     //在READ状态下也可能出现cas_end信号,此时状态机不会再出现WAIT_CAS状态
     assign cas_end  = ((state == WAIT_CAS || state == READ) && cnt_clk == CAS - 1)?1'b1:1'b0;
     
     //burst_term
-    always@(posedge clk or negedge rst_n) begin
-        if(!rst_n) begin
-            burst_term <= 1'b0;
-        end else case(state)
+    always@(*) begin
+        case(state)
             //burst_STOP信号可能出现在WAIT_CAS, BURST_READ状态下
             WAIT_CAS, BURST_READ: begin
-                if(cnt_clk == rd_burst_len - 10'd1) begin
-                    burst_term <= 1'b1;
+                if(cnt_clk == burst_len) begin
+                    burst_term = 1'b1;
                 end else begin
-                    burst_term <= 1'b0;
+                    burst_term = 1'b0;
                 end
             end
             default: begin
-                burst_term <= 1'b0;
+                burst_term = 1'b0;
             end
         endcase
     end
@@ -213,6 +218,45 @@ module sdram_read(
             end
         endcase
     end
+    
+    //处理突发传输溢出(突发连续读取的地址空间跨越不同行, 则需要暂停当前行读取, 并在新行重新进行发起读操作)
+    
+    //读溢出标志,实际上只在突发传输过程中起作用,故在burst_end之后拉低
+    //rd_overflow
+    always@(posedge clk or negedge rst_n) begin
+        if(!rst_n) begin
+            rd_overflow <= 1'b0;
+        end else if(state == READ && (column_addr + rd_burst_len) > MAX_COLUMN) begin
+            rd_overflow <= 1'b1;
+        end else if(burst_end) begin
+            rd_overflow <= 1'b0;
+        end else begin
+            rd_overflow <= rd_overflow;
+        end
+    end
+    
+    //寄存当前读取命令写入SDRAM的列首地址
+    //column_addr_reg
+    always@(posedge clk or negedge rst_n) begin
+        if(!rst_n) begin
+            column_addr_reg <= 13'd0;
+        end else if(state == READ) begin
+            column_addr_reg <= column_addr;
+        end else begin
+            column_addr_reg <= column_addr_reg;
+        end
+    end
+    
+    //burst_len
+    always@(*) begin
+        if(rd_overflow) begin
+            burst_len = MAX_COLUMN - column_addr_reg;
+        end else begin
+            burst_len = rd_burst_len;
+        end
+    end
+    
+    
     
     //输出
     //rd_cmd
