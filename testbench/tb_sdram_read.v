@@ -18,6 +18,7 @@ module tb_sdram_read(
     wire         clk_50M         ;
     wire         locked          ;
     reg          rst_n           ;
+    wire         reset           ;
     
     //复位信号与锁定信号相与,表示真正有效的复位
     wire         locked_rst_n    ;
