@@ -44,6 +44,8 @@ module fifo_ctrl(
         output  wire  [9:0]  rd_fifo_cnt            //读FIFO数据个数
     );
     
+    parameter FIFO_CNT_DELAY = 4'd9;  //FIFO数据个数计数器的更新延时周期
+    
     //中间连线
     wire [9:0]  rd_fifo_data_cnt    ; //读FIFO的数据个数
     wire [9:0]  wr_fifo_data_cnt    ; //写FIFO的数据个数
@@ -54,6 +56,13 @@ module fifo_ctrl(
     
     reg         sdram_rd_ack_d1     ; //sdram_rd_ack打一拍  
     wire        sdram_rd_ack_fall   ; //sdram_rd_ack下降沿,用作判断读SDRAM地址是否超限的依据 
+    
+    //辅助写请求信号产生的中间变量
+    wire        sdram_wr_req_disable; //写FIFO数量计数器有延时,在正真的fifo数据个数出现之前,SDRAM写请求无效
+    reg [3:0]   cnt_wr_req_disable  ; //等待写FIFO数量计数器更新的周期计数器
+    wire        sdram_wr_req_wait   ; //写请求等待标志
+    wire        sdram_rd_req_disable; //写FIFO数量计数器有延时,在正真的fifo数据个数出现之前,SDRAM读请求无效
+    
 
     //sdram_wr_ack_d1
     always@(posedge clk or negedge rst_n) begin
@@ -78,6 +87,30 @@ module fifo_ctrl(
 
     //sdram_rd_ack_fall
     assign sdram_rd_ack_fall = (sdram_rd_ack == 1'b0 && sdram_rd_ack_d1 == 1'b1)?1'b1:1'b0;
+    
+    //cnt_wr_req_disable
+    always@(posedge clk or negedge rst_n) begin
+        if(!rst_n) begin
+            cnt_wr_req_disable <= 4'd0;
+        end else if(sdram_wr_ack_fall) begin //SDRAM写操作(写FIFO读操作)完成, 开始等待FIFO数据个数计数器更新
+            cnt_wr_req_disable <= 4'd1;
+        end else if(cnt_wr_req_disable == FIFO_CNT_DELAY - 4'd1) begin //最大值
+            cnt_wr_req_disable <= 4'd0;
+        end else if(cnt_wr_req_disable > 4'd0) begin
+            cnt_wr_req_disable <= cnt_wr_req_disable + 4'd1;
+        end else begin
+            cnt_wr_req_disable <= cnt_wr_req_disable;
+        end
+    end
+    
+    //sdram_wr_req_wait
+    assign sdram_wr_req_wait = (cnt_wr_req_disable > 4'd0)?1'b1:1'b0;
+    
+    //sdram_wr_req_disable
+    assign sdram_wr_req_disable = sdram_wr_req_wait | sdram_wr_ack | sdram_wr_ack_d1;  //等待FIFO更新数据个数、写响应过程中都使得写请求无效
+    
+    //sdram_rd_req_disable
+    assign sdram_rd_req_disable = sdram_rd_ack | sdram_rd_ack_d1; //读FIFO读计数端口延时1个周期
     
     //SDRAM读写地址
     //sdram_wr_addr
@@ -118,25 +151,28 @@ module fifo_ctrl(
     always@(posedge clk or negedge rst_n) begin
         if(!rst_n) begin
             sdram_wr_req <= 1'b0;
-            sdram_rd_req <= 1'b0;
-        end else if(wr_fifo_data_cnt >= wr_burst_len) begin  //写FIFO数据满足wr_burst_len
-            sdram_wr_req <= 1'b1;
-            sdram_rd_req <= 1'b0;            
-        end else if(sdram_wr_ack) begin  //收到了SDRAM写响应
+            sdram_rd_req <= 1'b0;           
+        end else if(sdram_wr_req_disable) begin  //收到写请求失效信号,将写请求拉低
             sdram_wr_req <= 1'b0;
             sdram_rd_req <= 1'b0;
-        end else if(sdram_rd_valid && rd_fifo_data_cnt < rd_burst_len) begin  //读FIFO数据小于rd_burst_len
+        end else if(wr_fifo_data_cnt >= wr_burst_len) begin  
+        //写FIFO数据满足wr_burst_len,且当前写请求有效,发起写请求
+            sdram_wr_req <= 1'b1;
+            sdram_rd_req <= 1'b0; 
+        end else if(sdram_rd_req_disable) begin //读请求无效信号, 将读请求拉低
+            sdram_wr_req <= 1'b0;
+            sdram_rd_req <= 1'b0;  
+        end else if(sdram_rd_valid && rd_fifo_data_cnt < rd_burst_len) begin  //读FIFO数据小于rd_burst_len,拉高读请求
         //为了防止在SDRAM没有写入时就先读取,故需要外部传入的sdram_rd_valid信号来控制读操作
             sdram_wr_req <= 1'b0;
-            sdram_rd_req <= 1'b1;
-        end else if(sdram_rd_ack) begin //收到了SDRAM读响应
-            sdram_wr_req <= 1'b0;
-            sdram_rd_req <= 1'b0;        
+            sdram_rd_req <= 1'b1;            
         end else begin
-            sdram_wr_req <= 1'b0;
-            sdram_rd_req <= 1'b0;         
+            sdram_wr_req <= sdram_wr_req;
+            sdram_rd_req <= sdram_rd_req;         
         end
     end
+    
+    
     
     
     //写FIFO

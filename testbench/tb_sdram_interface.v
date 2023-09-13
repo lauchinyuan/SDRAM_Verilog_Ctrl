@@ -75,6 +75,7 @@ module tb_sdram_interface(
     wire [1:0]  sdram_ba            ;
     wire [12:0] sdram_addr          ;        
     wire [15:0] sdram_dq            ;  //读写SDRAM的数据总线
+    wire [1:0]  sdram_dpm           ;
     
     //其他辅助信号
     reg [2:0]   cnt_wr_wait         ;  //写等待计数器, 用于定期产生FIFO写数据和写请求信号
@@ -252,7 +253,8 @@ module tb_sdram_interface(
         .sdram_we_n          (sdram_we_n          ),
         .sdram_ba            (sdram_ba            ),
         .sdram_addr          (sdram_addr          ),        
-        .sdram_dq            (sdram_dq            )   //读写SDRAM的数据总线
+        .sdram_dq            (sdram_dq            ),   //读写SDRAM的数据总线
+        .sdram_dqm           (sdram_dqm           )
         
     );
     
@@ -268,7 +270,7 @@ module tb_sdram_interface(
         .Ras_n   (sdram_ras_n           ), 
         .Cas_n   (sdram_cas_n           ), 
         .We_n    (sdram_we_n            ), 
-        .Dqm     (2'b00                 ),  //相当于不使用掩码
+        .Dqm     (sdram_dqm             ),  
         .Debug   (1'b1                  )
     );   
     

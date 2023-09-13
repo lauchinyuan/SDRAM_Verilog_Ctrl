@@ -322,6 +322,7 @@ module sdram_write(
     assign wr_end = (state == WR_END)?1'b1:1'b0;
     
     //wr_ack
+    //实际上提前有效写入数据一拍拉高,这是为了配合外围写FIFO(wr_fifo)的读时序(FIFO读出数据延后读使能一拍)
     assign wr_ack = (state == WRITE || state == BURST_WRITE)?1'b1:1'b0;
     
     //wr_sdram_en

@@ -30,7 +30,7 @@ module sdram_interface(
         input   wire [23:0] sdram_rd_beg_addr   ,  //写SDRAM的起始地址
         input   wire [23:0] sdram_rd_end_addr   ,  //终止地址
         input   wire [9:0]  rd_burst_len        ,  
-        input   wire        sdram_rd_valid      ,  //SDRAM写有效信号
+        input   wire        sdram_rd_valid      ,  //SDRAM读有效信号
         output  wire [9:0]  rd_fifo_cnt         ,
 
         //模块与SDRAM之间的交互总线
@@ -42,8 +42,8 @@ module sdram_interface(
         output  wire        sdram_we_n          ,
         output  wire [1:0]  sdram_ba            ,
         output  wire [12:0] sdram_addr          ,        
-        inout   wire [15:0] sdram_dq               //读写SDRAM的数据总线
-        
+        inout   wire [15:0] sdram_dq            ,   //读写SDRAM的数据总线
+        output  wire [1:0]  sdram_dqm            
     );
     
     //SDRAM控制器和FIFO控制器的连线
@@ -125,5 +125,6 @@ module sdram_interface(
     //SDRAM时钟直接传给SDRAM即可
     assign sdram_clk_o = sdram_clk_i    ;
     
-    
+    //掩码信号使用00(相当于不使用掩码)
+    assign sdram_dqm = 2'b00;
 endmodule
