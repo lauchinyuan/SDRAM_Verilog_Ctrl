@@ -62,11 +62,11 @@ module tb_uart_sdram_top(
     
     //读写起始地址、突发长度
     assign sdram_wr_beg_addr = 24'd0    ;
-    assign sdram_wr_end_addr = 24'd1    ;
+    assign sdram_wr_end_addr = 24'd3    ;
     assign sdram_rd_beg_addr = 24'd0    ;
-    assign sdram_rd_end_addr = 24'd1    ;
-    assign wr_burst_len      = 10'd1    ;
-    assign rd_burst_len      = 10'd1    ;    
+    assign sdram_rd_end_addr = 24'd3    ;
+    assign wr_burst_len      = 10'd2    ;
+    assign rd_burst_len      = 10'd2    ;    
     
     //模拟产生串口rx数据和SDRAM读有效信号
     initial begin
@@ -88,7 +88,7 @@ module tb_uart_sdram_top(
     //rx_byte任务,连续读取data_mem寄存器内的内容
     task rx_byte();
         integer j;
-        for(j=0;j<2;j=j+1) begin
+        for(j=0;j<4;j=j+1) begin
             rx_bit(data_mem[j]);  //调用rx_bit子任务
         end
     endtask

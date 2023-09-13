@@ -25,7 +25,9 @@ module uart_rd_fifo(
     
     //中间变量
     reg         sdram_fifo_rd_en_d      ; //sdram_fifo_rd_en打拍,与有效数据对齐,用于本地FIFO的写请求
+    wire        sdram_fifo_rd_en_fall   ; //sdram_fifo_rd_en下降沿标志,表示这一时刻的sdram_rd_fifo_cnt并不是真实数据个数,还需要等待递减完成
     wire[9:0]   data_num                ; //本地FIFO数据个数
+    reg [9:0]   cnt_data                ; //sdram_fifo_rd_en持续时间计数器(持续一个burst_len长度)
     reg         rd_flag                 ; //本地FIFO有效读取标志,高电平时开始进行计时(和串口波特率匹配),并逐步读取一个burst_len长度的数据
     reg [12:0]  cnt_baud                ; //波特率计数器,用于定时,匹配串口速率
     reg         bit_flag                ; //波特率计数器中间时刻标志
@@ -33,14 +35,29 @@ module uart_rd_fifo(
     reg         read_fifo_en            ; //读本地FIFO请求
     reg [9:0]   local_fifo_cnt_read     ; //本地FIFO读取个数计数器
     
+    assign sdram_fifo_rd_en_fall = (sdram_fifo_rd_en_d == 1'b1 && sdram_fifo_rd_en == 1'b0)?1'b1:1'b0;
+    
+    //cnt_data
+    always@(posedge clk or negedge rst_n) begin
+        if(!rst_n) begin
+            cnt_data <= 10'd0;
+        end else if(sdram_fifo_rd_en && cnt_data == burst_len - 10'd1) begin
+            cnt_data <= 10'd0;
+        end else if(sdram_fifo_rd_en) begin
+            cnt_data <= cnt_data + 10'd1;           
+        end else begin
+            cnt_data <= cnt_data;
+        end
+    end
+    
     //sdram_fifo_rd_en
     always@(posedge clk or negedge rst_n) begin
         if(!rst_n) begin
             sdram_fifo_rd_en <= 1'b0;
-        end else if(sdram_rd_fifo_cnt >= burst_len && data_num == 10'd0) begin
-            //SDRAM接口读FIFO个数超过burst_len个, 本地FIFO无数据
+        end else if(!sdram_fifo_rd_en && sdram_rd_fifo_cnt >= burst_len && data_num == 10'd0 && !sdram_fifo_rd_en_fall) begin
+            //SDRAM接口读FIFO个数超过burst_len个, 本地FIFO无数据, 且sdram_rd_fifo_cnt能反映真实数据个数
             sdram_fifo_rd_en <= 1'b1;
-        end else if(data_num == (burst_len - 10'd2)) begin //读了burst_len个数据     //BUG
+        end else if(sdram_fifo_rd_en && cnt_data == burst_len - 10'd1) begin //已持续burst_len个周期   
             sdram_fifo_rd_en <= 1'b0;
         end else begin
             sdram_fifo_rd_en <= sdram_fifo_rd_en;

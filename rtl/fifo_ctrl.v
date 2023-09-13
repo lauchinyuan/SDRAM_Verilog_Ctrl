@@ -219,10 +219,10 @@ module fifo_ctrl(
         .wr_en          (sdram_rd_ack       ),   
             
         //计数端口  
-        .wr_data_count  (rd_fifo_data_cnt   ),  
+        .wr_data_count  (),  
         
         //未使用
-        .rd_data_count  (),  
+        .rd_data_count  (rd_fifo_data_cnt   ),  
         .empty          (),   
         .wr_rst_busy    (),   
         .rd_rst_busy    (),
